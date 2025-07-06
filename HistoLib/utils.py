@@ -63,7 +63,7 @@ def train_test_split(df, test_size=0.5, random_state=7):
 def compute_weights(my_generator):
     labels = np.concatenate([l.argmax(1) for _, l in my_generator])
     class_weights = class_weight.compute_class_weight('balanced',
-                                                         classes=sorted(np.unique(labels)),
+                                                         classes=np.unique(labels),
                                                          y=list(labels))
     class_weights = dict(enumerate(class_weights))
     return class_weights
