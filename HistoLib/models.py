@@ -6,19 +6,12 @@ from tensorflow.keras.applications import (
     EfficientNetB7,
     ConvNeXtBase
 )
-from vit_keras import vit
+import keras_cv
 
 
 def resnet_model(num_classes, input_shape):
     """
     Creates a model with a ResNet50V2 backbone.
-
-    Args:
-        num_classes (int): Number of output classes.
-        input_shape (tuple): Shape of the input images (H, W, C).
-
-    Returns:
-        A tuple containing the Keras Model and the model's name.
     """
     inputs = layers.Input(input_shape)
 
@@ -36,13 +29,6 @@ def resnet_model(num_classes, input_shape):
 def efficientnet_b7_model(num_classes, input_shape):
     """
     Creates a model with an EfficientNet-B7 backbone.
-
-    Args:
-        num_classes (int): Number of output classes.
-        input_shape (tuple): Shape of the input images (H, W, C).
-
-    Returns:
-        A tuple containing the Keras Model and the model's name.
     """
     inputs = layers.Input(input_shape)
     base_model = EfficientNetB7(include_top=False, weights='imagenet', pooling='avg', input_tensor=inputs)
@@ -59,13 +45,6 @@ def efficientnet_b7_model(num_classes, input_shape):
 def convnext_model(num_classes, input_shape):
     """
     Creates a model with a ConvNeXt-Base backbone.
-
-    Args:
-        num_classes (int): Number of output classes.
-        input_shape (tuple): Shape of the input images (H, W, C).
-
-    Returns:
-        A tuple containing the Keras Model and the model's name.
     """
     inputs = layers.Input(input_shape)
 
@@ -82,51 +61,30 @@ def convnext_model(num_classes, input_shape):
 
 def vit_model(num_classes, input_shape):
     """
-    Creates a model with a Vision Transformer (ViT) backbone.
-    NOTE: This model has a different architecture and input requirements.
-
-    Args:
-        num_classes (int): Number of output classes.
-        input_shape (tuple): Shape of the input images (H, W, C).
-                             ViT often requires specific input sizes, e.g., (224, 224, 3).
-
-    Returns:
-        A tuple containing the Keras Model and the model's name.
+    Creates a model with a Vision Transformer (ViT) backbone using KerasCV.
     """
-    image_size = 224
+    inputs = layers.Input(shape=input_shape)
 
-    inputs = layers.Input(input_shape)
-    x = layers.Resizing(image_size, image_size)(inputs)
-
-    vit_base_model = vit.vit_b16(
-        image_size=image_size,
-        pretrained=True,
-        include_top=False,
-        pretrained_top=False
+    base_model = keras_cv.models.VisionTransformer.from_preset(
+        "vit_base_en_imagenet",
+        load_weights=True
     )
+    x = base_model(inputs)
 
-    x = vit_base_model(x)
     x = layers.Dense(256, activation='relu', name='prev_dense')(x)
     x = layers.Dropout(0.5, name='dropout')(x)
     outputs = layers.Dense(num_classes, activation='softmax', name='last_dense')(x)
 
     model = Model(inputs=inputs, outputs=outputs)
 
-    return model, 'ViT'
+    return model, 'ViT_KerasCV'
 
 
 def get_model(generator, model_name='ResNet50'):
     """
     Retrieves a specified model by name, configured for the given data generator.
-
-    Args:
-        generator: A Keras data generator from which num_classes and input_shape are inferred.
-        model_name (str): The name of the model to retrieve.
-
-    Returns:
-        A tuple containing the compiled Keras Model and the model's name.
     """
-    assert model_name in ['ResNet50', 'EfficientNetB7', 'ConvNeXt', 'ViT']
+    assert model_name in ['ResNet50', 'EfficientNetB7', 'ConvNeXt', 'ViT_KerasCV']
 
     num_classes = generator.num_classes
     input_shape = generator[0][0][0].shape
@@ -141,5 +99,5 @@ def get_model(generator, model_name='ResNet50'):
         return efficientnet_b7_model(num_classes, input_shape)
     elif model_name == 'ConvNeXt':
         return convnext_model(num_classes, input_shape)
-    elif model_name == 'ViT':
+    elif model_name == 'ViT_KerasCV':
         return vit_model(num_classes, input_shape)
