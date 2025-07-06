@@ -1,10 +1,21 @@
+# Image Augmentation
 albumentations==1.4.10
-imageio==2.34.2
-keras-cv==1.0.0
-matplotlib==3.10.0
-numpy==1.29.0
-opencv-python==4.10.0.84
-pandas==2.5.0
-scikit-learn==1.7.0
-tensorflow==2.20.0
+albucore==0.0.11
+
+# Core Machine Learning & Data Handling (TensorFlow Downgraded for Compatibility)
+tensorflow==2.15.0
+keras-cv==0.9.0
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.5.0
+
+# TensorFlow Addons (Deprecated, requires older TensorFlow)
+tensorflow-addons==0.23.0
+
+# Data Visualization & Image I/O
+matplotlib==3.8.4
+imageio==2.34.1
+opencv-python==4.9.0.80
+
+# Utility
 tqdm==4.66.4
