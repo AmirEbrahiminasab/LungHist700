@@ -1,4 +1,6 @@
 logs/
+.idea/
+HistoLib/__pycache__/
 
 *checkpoints*
 *.pyc
