@@ -1,11 +1,9 @@
-tensorflow==2.15.0
-keras==2.15.0
+tensorflow==2.18.0
 keras-cv==0.7.2
-numpy>=1.24.0,<1.26
+numpy==1.26.0
 pillow>=9.0.0
 pandas==2.2.2
 scikit-learn==1.5.0
-tensorflow-addons==0.22.0
 matplotlib==3.8.4
 imageio==2.34.1
 opencv-python==4.9.0.80
