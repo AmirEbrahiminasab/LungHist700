@@ -2,7 +2,6 @@ import os
 import datetime
 import numpy as np
 import tensorflow as tf
-import tensorflow_addons as tfa
 import matplotlib.pyplot as plt
 from tqdm.keras import TqdmCallback
 from sklearn.metrics import ConfusionMatrixDisplay, precision_score, recall_score, accuracy_score, roc_auc_score
@@ -21,14 +20,14 @@ def compile_model(model, num_classes, init_lr=1e-4):
                   metrics=[
                         tf.keras.metrics.CategoricalAccuracy(name=f'metrics/accuracy'),
                         tf.keras.metrics.TopKCategoricalAccuracy(2, name=f'metrics/top-2-accuracy'),
-                        tfa.metrics.F1Score(num_classes=num_classes, average='macro', name='metrics/F1-macro'),
+                        tf.keras.metrics.F1Score(num_classes=num_classes, average='macro', name='metrics/F1-macro'),
                         tf.keras.metrics.AUC(multi_label=True, num_labels=num_classes, name='metrics/AUC'),
                         tf.keras.metrics.Precision(name='metrics/precision'),
                         tf.keras.metrics.Recall(name='metrics/recall'),
                         tf.keras.metrics.PrecisionAtRecall(0.99, name='metrics/P@R_99'),
                         tf.keras.metrics.PrecisionAtRecall(0.95, name='metrics/P@R_95'),
                         tf.keras.metrics.PrecisionAtRecall(0.9, name='metrics/P@R_90'),
-                        tfa.metrics.MatthewsCorrelationCoefficient(num_classes=num_classes, name='metrics/MCC')
+                        tf.keras.metrics.MatthewsCorrelationCoefficient(num_classes=num_classes, name='metrics/MCC')
                     ],
                  )
     return model
