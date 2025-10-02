@@ -20,14 +20,14 @@ def compile_model(model, num_classes, init_lr=1e-4):
                   metrics=[
                         tf.keras.metrics.CategoricalAccuracy(name=f'metrics/accuracy'),
                         tf.keras.metrics.TopKCategoricalAccuracy(2, name=f'metrics/top-2-accuracy'),
-                        tf.keras.metrics.F1Score(num_classes=num_classes, average='macro', name='metrics/F1-macro'),
+                        tf.keras.metrics.F1Score(average='macro', name='metrics/F1-macro'),
                         tf.keras.metrics.AUC(multi_label=True, num_labels=num_classes, name='metrics/AUC'),
                         tf.keras.metrics.Precision(name='metrics/precision'),
                         tf.keras.metrics.Recall(name='metrics/recall'),
                         tf.keras.metrics.PrecisionAtRecall(0.99, name='metrics/P@R_99'),
                         tf.keras.metrics.PrecisionAtRecall(0.95, name='metrics/P@R_95'),
                         tf.keras.metrics.PrecisionAtRecall(0.9, name='metrics/P@R_90'),
-                        tf.keras.metrics.MatthewsCorrelationCoefficient(num_classes=num_classes, name='metrics/MCC')
+                        # tf.keras.metrics.MatthewsCorrelationCoefficient(num_classes=num_classes, name='metrics/MCC')
                     ],
                  )
     return model
@@ -41,7 +41,7 @@ def train_model(model, train_generator, val_generator, class_weights, log_dir,
     callbacks =[
            EarlyStopping(monitor='val_loss', restore_best_weights=False, patience=patience),
            ReduceLROnPlateau(monitor='val_loss', patience=patience_lr, min_lr=1e-7),       
-           ModelCheckpoint(log_dir, monitor=f"val_loss", save_best_only=True, save_weights_only=True),
+           ModelCheckpoint(os.path.join(log_dir, "best_model.weights.h5"), monitor=f"val_loss", save_best_only=True, save_weights_only=True),
            TqdmCallback(leave=False)
     ]
     
