@@ -54,7 +54,7 @@ class CustomDataGenerator(Sequence):
         
     def __len__(self):
         # Number of batches in the generator
-        return int(np.ceil(len(self.images) / self.batch_size))
+        return int(len(self.images) / self.batch_size)
 
     def __getitem__(self, idx):
 
