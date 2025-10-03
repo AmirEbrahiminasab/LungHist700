@@ -16,7 +16,7 @@ def train_augmentations(percent_resize=0.25):
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.5),
         A.GridDistortion(p=0.2),
-        A.RandomSizedCrop(min_max_height=(1000, 1200), height=1200, width=1600, p=0.4),
+        A.RandomSizedCrop(min_max_height=(1000, 1200), size=(1200, 1600), p=0.4),
         A.RandomGamma(gamma_limit=(80, 120), p=0.5),
         A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.2),
         A.HueSaturationValue(hue_shift_limit=5, sat_shift_limit=20,
