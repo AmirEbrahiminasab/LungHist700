@@ -54,7 +54,7 @@ class CustomDataGenerator(Sequence):
         
     def __len__(self):
         # Number of batches in the generator
-        return int(len(self.images) / self.batch_size)
+        return int(np.ceil(len(self.images) / self.batch_size))
 
     def __getitem__(self, idx):
 
@@ -71,8 +71,11 @@ class CustomDataGenerator(Sequence):
         labels = self.labels[idx * bs : (idx+1) * bs]
 
         # Read images
-        print(images)
-        print(images.shape)
+        if len(images) == 0:
+            height = int(1200 * 0.25)  # Adjust 0.25 if using a different image_scale
+            width = int(1600 * 0.25)  # Adjust 0.25 if using a different image_scale
+            return np.zeros((0, height, width, 3), dtype=np.float32), to_categorical([], num_classes=self.num_classes)
+
         images = np.array([imageio.v3.imread(im) for im in images])
         images = np.stack([self.augment(image=x)["image"] for x in images], axis=0)
         labels = to_categorical(labels, num_classes=self.num_classes)
