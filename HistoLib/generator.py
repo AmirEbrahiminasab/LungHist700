@@ -55,24 +55,26 @@ class CustomDataGenerator(Sequence):
     def __len__(self):
         # Number of batches in the generator
         return int(np.ceil(len(self.images) / self.batch_size))
-    
+
     def __getitem__(self, idx):
-        
-        if (idx == 0) and (self.shuffle_epoch):            
+
+        if (idx == 0) and (self.shuffle_epoch):
             # Shuffle at first batch
             c = list(zip(self.images, self.labels))
             random.shuffle(c)
             self.images, self.labels = zip(*c)
-            self.images, self.labels = np.array(self.images), np.array(self.labels)       
-            
+            self.images, self.labels = np.array(self.images), np.array(self.labels)
+
         # Get one batch
         bs = self.batch_size
         images = self.images[idx * bs : (idx+1) * bs]
         labels = self.labels[idx * bs : (idx+1) * bs]
-        
+
         # Read images
-        images = np.array([imageio.v3.imread(im) for im in images])                
-        images = np.stack([self.augment(image=x)["image"] for x in images], axis=0)        
+        print(images)
+        print(images.shape)
+        images = np.array([imageio.v3.imread(im) for im in images])
+        images = np.stack([self.augment(image=x)["image"] for x in images], axis=0)
         labels = to_categorical(labels, num_classes=self.num_classes)
 
         return images, labels
