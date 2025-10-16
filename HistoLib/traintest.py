@@ -44,7 +44,8 @@ def train_model(model, train_generator, val_generator, class_weights, log_dir,
            ModelCheckpoint(os.path.join(log_dir, "best_model.weights.h5"), monitor=f"val_loss", save_best_only=True, save_weights_only=True),
            TqdmCallback(leave=True, verbose=2)
     ]
-    
+
+    print("Training the Model...")
     history = model.fit(train_generator, epochs=num_epochs, verbose=1, callbacks=callbacks, validation_data=val_generator,class_weight=class_weights)
     
     print(f'Loading weights with best iteration...')
