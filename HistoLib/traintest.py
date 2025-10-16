@@ -42,10 +42,10 @@ def train_model(model, train_generator, val_generator, class_weights, log_dir,
            EarlyStopping(monitor='val_loss', restore_best_weights=False, patience=patience),
            ReduceLROnPlateau(monitor='val_loss', patience=patience_lr, min_lr=1e-7),       
            ModelCheckpoint(os.path.join(log_dir, "best_model.weights.h5"), monitor=f"val_loss", save_best_only=True, save_weights_only=True),
-           TqdmCallback(leave=False)
+           TqdmCallback(leave=True, verbose=2)
     ]
     
-    history = model.fit(train_generator, epochs=num_epochs, verbose=0, callbacks=callbacks, validation_data=val_generator,class_weight=class_weights)
+    history = model.fit(train_generator, epochs=num_epochs, verbose=1, callbacks=callbacks, validation_data=val_generator,class_weight=class_weights)
     
     print(f'Loading weights with best iteration...')
     model.load_weights(os.path.join(log_dir, "best_model.weights.h5"))
