@@ -32,6 +32,7 @@ def get_dataframe(dataset_csv='data/data.csv', resolution=None):
         da = da[da.resolution==resolution]
     return da
 
+
 def get_classes_labels(root_directory, image_paths):
     class_names = sorted(list(set([f if '_' not in f else f.split('_')[0] for f in os.listdir(root_directory) if not f.startswith('.')])))
     class2int = dict(zip(class_names, range(len(class_names))))
@@ -60,13 +61,21 @@ def train_test_split(df, test_size=0.5, random_state=7):
     return df_train, df_test
 
 
-def compute_weights(my_generator):
-    labels = np.concatenate([l.argmax(1) for _, l in my_generator])
-    class_weights = class_weight.compute_class_weight('balanced',
-                                                         classes=np.unique(labels),
-                                                         y=list(labels))
-    class_weights = dict(enumerate(class_weights))
-    return class_weights
+def compute_weights(gen):
+    # labels = np.concatenate([l.argmax(1) for _, l in my_generator])
+    # class_weights = class_weight.compute_class_weight('balanced',
+    #                                                      classes=np.unique(labels),
+    #                                                      y=list(labels))
+    # class_weights = dict(enumerate(class_weights))
+    # return class_weights
+    if hasattr(gen, 'classes'):
+        labels = np.asarray(gen.classes)  # integers per sample
+    else:
+        # Fallback: iterate one epoch deterministically
+        labels = np.concatenate([gen[i][1].argmax(axis=1) for i in range(len(gen))])
+    classes = np.unique(labels)
+    weights = class_weight.compute_class_weight(class_weight='balanced', classes=classes, y=labels)
+    return {int(c): float(w) for c, w in zip(classes, weights)}
 
 
 def plot_model(model):
@@ -110,3 +119,4 @@ def dataset_description(dataset_csv='data/data.csv'):
     print('Total patients', len(df.patient_id.unique()))
     
     return summary
+
