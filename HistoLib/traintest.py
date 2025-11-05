@@ -39,7 +39,7 @@ def train_model(model, train_generator, val_generator, class_weights, log_dir,
                 patience_lr = 10):
 
     callbacks =[
-           EarlyStopping(monitor='val_loss', restore_best_weights=False, patience=patience),
+           EarlyStopping(monitor='val_loss', restore_best_weights=True, patience=patience),
            ReduceLROnPlateau(monitor='val_loss', patience=patience_lr, min_lr=1e-7),       
            ModelCheckpoint(os.path.join(log_dir, "best_model.weights.h5"), monitor=f"val_loss", save_best_only=True, save_weights_only=True),
            TqdmCallback(leave=True, verbose=2)
