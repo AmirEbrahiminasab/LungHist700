@@ -99,7 +99,7 @@ def swin_model(num_classes, input_shape):
     outputs = layers.Dense(num_classes, activation='softmax', name='last_dense')(x)
 
     model = Model(inputs=inputs, outputs=outputs)
-    return model, 'Swin_Transformer'
+    return model, 'Swin_KerasCV'
 
 
 def get_model(generator, model_name='ResNet50'):
