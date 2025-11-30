@@ -85,18 +85,17 @@ def swin_model(num_classes, input_shape):
     Creates a model with a Swin Transformer Large backbone using KerasCV.
     Fits on T4/P100 (16GB VRAM).
     """
-    inputs = layers.Input(shape=input_shape)
-
-    # Using Swin Large (approx 197M params). 
-    # If you encounter OOM errors with large batch sizes, 
-    # change this string to "swin_base_224_imagenet".
-    base_model = keras_cv.models.SwinTransformer.from_preset(
-        "swin_large_224_imagenet",
+    from keras_cv.models.backbones import SwinTransformerBackbone
+    
+    base_model = SwinTransformerBackbone.from_preset(
+        "swin_large_patch4_window7_224",
         load_weights=True
     )
     
+    inputs = layers.Input(shape=input_shape)
     x = base_model(inputs)
-
+    
+    # Add custom head
     x = layers.Dense(256, activation='relu', name='prev_dense')(x)
     x = layers.Dropout(0.5, name='dropout')(x)
     outputs = layers.Dense(num_classes, activation='softmax', name='last_dense')(x)
@@ -110,7 +109,6 @@ def get_model(generator, model_name='ResNet50'):
     """
     Retrieves a specified model by name, configured for the given data generator.
     """
-    # Updated assertion list
     assert model_name in ['ResNet50', 'EfficientNetB7', 'ConvNeXt', 'ViT_KerasCV', 'Swin_KerasCV']
 
     num_classes = generator.num_classes
