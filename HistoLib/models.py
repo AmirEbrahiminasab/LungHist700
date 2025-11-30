@@ -1,5 +1,5 @@
 import tensorflow as tf
-from transformers import TFSwinModel
+from tfswin import SwinTransformerLarge224
 from tensorflow.keras import layers
 from tensorflow.keras.models import Model
 from tensorflow.keras.applications import (
@@ -86,16 +86,20 @@ def swin_model(num_classes, input_shape):
     Creates a model with a Swin Transformer Large backbone using KerasCV.
     Fits on T4/P100 (16GB VRAM).
     """
-    base_model = TFSwinModel.from_pretrained("microsoft/swin-large-patch4-window7-224")
+    inputs = layers.Input(shape=input_shape)
     
-    inputs = tf.keras.layers.Input(shape=input_shape, dtype=tf.uint8)
-    outputs = base_model(inputs).last_hidden_state
-    outputs = tf.keras.layers.GlobalAveragePooling1D()(outputs)
-    outputs = tf.keras.layers.Dense(num_classes, activation='softmax')(outputs)
+    base_model = SwinTransformerLarge224(
+        include_top=False,  
+        pooling='avg'       
+    )
+    
+    x = base_model(inputs)
+    x = layers.Dense(256, activation='relu', name='prev_dense')(x)
+    x = layers.Dropout(0.5, name='dropout')(x)
+    outputs = layers.Dense(num_classes, activation='softmax', name='last_dense')(x)
 
-    model = tf.keras.Model(inputs=inputs, outputs=outputs)
-
-    return model, 'Swin_KerasCV'
+    model = Model(inputs=inputs, outputs=outputs)
+    return model, 'Swin_Transformer'
 
 
 def get_model(generator, model_name='ResNet50'):
