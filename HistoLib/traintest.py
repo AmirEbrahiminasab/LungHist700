@@ -13,6 +13,21 @@ def get_logdir(model_name, run_name='', base_log='logs'):
     
     return os.path.join(base_log, date, run_name)
 
+def make_backbone_trainable(model, trainable=True):
+    """Helper to freeze/unfreeze the backbone layers."""
+    
+    for layer in model.layers:
+        # We want to keep the BatchNormalization layers trainable for statistics, 
+        # but freeze the weights of Convolutions during warm-up.
+        if isinstance(layer, tf.keras.layers.BatchNormalization):
+            layer.trainable = True
+        elif 'dense' in layer.name or 'dropout' in layer.name:
+            layer.trainable = True
+        else:
+            layer.trainable = trainable
+            
+    return model
+
 
 def compile_model(model, num_classes, init_lr=1e-4):
     model.compile(optimizer=tf.keras.optimizers.Adam(init_lr), 
