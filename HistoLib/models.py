@@ -4,7 +4,7 @@ from tensorflow.keras import layers
 from tensorflow.keras.models import Model
 from tensorflow.keras.applications import (
     ResNet50V2,
-    EfficientNetB7,
+    EfficientNetB3,
     ConvNeXtBase
 )
 import keras_cv
@@ -15,6 +15,9 @@ def resnet_model(num_classes, input_shape):
     Creates a model with a ResNet50V2 backbone.
     """
     inputs = layers.Input(input_shape)
+    # GENERATOR GIVES 0...1. ResNetV2 wants -1...1
+    # Formula: (x * 255) -> preprocess -> or simple (x - 0.5) * 2
+    inputs = layers.Rescaling(scale=1./0.5, offset=-1)(inputs)
 
     base_model = ResNet50V2(include_top=False, weights='imagenet', pooling='avg', input_tensor=inputs)
 
@@ -27,12 +30,12 @@ def resnet_model(num_classes, input_shape):
     return model, 'ResNet50V2'
 
 
-def efficientnet_b7_model(num_classes, input_shape):
+def efficientnet_b3_model(num_classes, input_shape):
     """
-    Creates a model with an EfficientNet-B7 backbone.
+    Creates a model with an EfficientNet-B3 backbone.
     """
     inputs = layers.Input(input_shape)
-    base_model = EfficientNetB7(include_top=False, weights='imagenet', pooling='avg', input_tensor=inputs)
+    base_model = EfficientNetB3(include_top=False, weights='imagenet', pooling='avg', input_tensor=inputs)
 
     x = layers.Dense(256, activation='relu', name='prev_dense')(base_model.output)
     x = layers.Dropout(0.5, name='dropout')(x)
@@ -40,7 +43,7 @@ def efficientnet_b7_model(num_classes, input_shape):
 
     model = Model(inputs=inputs, outputs=outputs)
 
-    return model, 'EfficientNetB7'
+    return model, 'EfficientNetB3'
 
 
 def convnext_model(num_classes, input_shape):
@@ -106,7 +109,7 @@ def get_model(generator, model_name='ResNet50'):
     """
     Retrieves a specified model by name, configured for the given data generator.
     """
-    assert model_name in ['ResNet50', 'EfficientNetB7', 'ConvNeXt', 'ViT_KerasCV', 'Swin_KerasCV']
+    assert model_name in ['ResNet50', 'EfficientNetB3', 'ConvNeXt', 'ViT_KerasCV', 'Swin_KerasCV']
 
     num_classes = generator.num_classes
     input_shape = generator[0][0][0].shape
@@ -117,8 +120,8 @@ def get_model(generator, model_name='ResNet50'):
 
     if model_name == 'ResNet50':
         return resnet_model(num_classes, input_shape)
-    elif model_name == 'EfficientNetB7':
-        return efficientnet_b7_model(num_classes, input_shape)
+    elif model_name == 'EfficientNetB3':
+        return efficientnet_b3_model(num_classes, input_shape)
     elif model_name == 'ConvNeXt':
         return convnext_model(num_classes, input_shape)
     elif model_name == 'ViT_KerasCV':
