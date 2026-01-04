@@ -11,39 +11,53 @@ import cv2
 # https://keras.io/examples/vision/grad_cam/
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
-    # First, we create a model that maps the input image to the activations
+    # Create a model that maps the input image to the activations
     # of the last conv layer as well as the output predictions
-    
     grad_model = Model(
-        model.inputs, [model.get_layer(last_conv_layer_name).output, model.output])
+        model.inputs, [model.get_layer(last_conv_layer_name).output, model.output]
+    )
 
-    # Then, we compute the gradient of the top predicted class for our input image
-    # with respect to the activations of the last conv layer
+    # FIX: Keras 3 models with complex histories (cloned/loaded) often expect 
+    # named inputs when sliced. We wrap the array in a dictionary using the 
+    # model's internal input name.
+    if isinstance(model.input_names, list) and len(model.input_names) == 1:
+        input_data = {model.input_names[0]: img_array}
+    else:
+        input_data = img_array
+
+    # Compute the gradient
     with tf.GradientTape() as tape:
-        last_conv_layer_output, preds = grad_model(img_array)
+        # Cast input to tensor explicitly to satisfy Keras 3 graph execution
+        if isinstance(input_data, dict):
+            # If it's a dict, we cast the value inside
+            key = list(input_data.keys())[0]
+            input_data[key] = tf.cast(input_data[key], tf.float32)
+            tape.watch(input_data[key])
+        else:
+            input_data = tf.cast(input_data, tf.float32)
+            tape.watch(input_data)
+            
+        last_conv_layer_output, preds = grad_model(input_data)
+        
         if pred_index is None:
             pred_index = tf.argmax(preds[0])
         class_channel = preds[:, pred_index]
 
-    # This is the gradient of the output neuron (top predicted or chosen)
-    # with regard to the output feature map of the last conv layer
+    # This is the gradient of the output neuron
     grads = tape.gradient(class_channel, last_conv_layer_output)
 
-    # This is a vector where each entry is the mean intensity of the gradient
-    # over a specific feature map channel
+    # Vector where each entry is the mean intensity of the gradient
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
 
-    # We multiply each channel in the feature map array
-    # by "how important this channel is" with regard to the top predicted class
-    # then sum all the channels to obtain the heatmap class activation
+    # Multiply each channel in the feature map array
     last_conv_layer_output = last_conv_layer_output[0]
     heatmap = last_conv_layer_output @ pooled_grads[..., tf.newaxis]
     heatmap = tf.squeeze(heatmap)
 
-    # For visualization purpose, we will also normalize the heatmap between 0 & 1
+    # Normalize the heatmap between 0 & 1
     heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
     return heatmap.numpy()
-        
+
 def get_img_array(img_path, size):
     # `img` is a PIL image of size 299x299
     img = keras.utils.load_img(img_path, target_size=size)
