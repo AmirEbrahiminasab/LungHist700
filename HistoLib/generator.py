@@ -57,24 +57,18 @@ class CustomDataGenerator(Sequence):
         return int(np.ceil(len(self.images) / self.batch_size))
 
     def __getitem__(self, idx):
+        if idx < 0 or idx >= len(self):
+            raise IndexError  
 
         if (idx == 0) and (self.shuffle_epoch):
-            # Shuffle at first batch
             c = list(zip(self.images, self.labels))
             random.shuffle(c)
             self.images, self.labels = zip(*c)
             self.images, self.labels = np.array(self.images), np.array(self.labels)
 
-        # Get one batch
         bs = self.batch_size
-        images = self.images[idx * bs : (idx+1) * bs]
-        labels = self.labels[idx * bs : (idx+1) * bs]
-
-        # Read images
-        if len(images) == 0:
-            height = int(1200 * 0.25)  # Adjust 0.25 if using a different image_scale
-            width = int(1600 * 0.25)  # Adjust 0.25 if using a different image_scale
-            return np.zeros((0, height, width, 3), dtype=np.float32), to_categorical([], num_classes=self.num_classes)
+        images = self.images[idx * bs : (idx + 1) * bs]
+        labels = self.labels[idx * bs : (idx + 1) * bs]
 
         images = np.array([imageio.v3.imread(im) for im in images])
         images = np.stack([self.augment(image=x)["image"] for x in images], axis=0)
