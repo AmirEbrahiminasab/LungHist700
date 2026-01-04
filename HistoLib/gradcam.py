@@ -11,50 +11,47 @@ import cv2
 # https://keras.io/examples/vision/grad_cam/
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
-    # Create a model that maps the input image to the activations
-    # of the last conv layer as well as the output predictions
+    # 1. Create the gradient model
+    # Note: in Keras 3, slicing models like this can be unstable with mixed input types
     grad_model = Model(
         model.inputs, [model.get_layer(last_conv_layer_name).output, model.output]
     )
 
-    # FIX: Keras 3 models with complex histories (cloned/loaded) often expect 
-    # named inputs when sliced. We wrap the array in a dictionary using the 
-    # model's internal input name.
-    if isinstance(model.input_names, list) and len(model.input_names) == 1:
-        input_data = {model.input_names[0]: img_array}
-    else:
-        input_data = img_array
+    # 2. Prepare the input strictly as a Tensor
+    img_tensor = tf.convert_to_tensor(img_array)
 
-    # Compute the gradient
+    # 3. Handle Input Naming
+    # Keras 3 Functional API requires inputs to exactly match the dictionary keys 
+    # of the internal graph if the model has named inputs.
+    input_name = model.inputs[0].name
+    
+    # We construct a dictionary mapping the Input Layer Name -> Image Tensor
+    input_data = {input_name: img_tensor}
+
+    # 4. Compute Gradients
     with tf.GradientTape() as tape:
-        # Cast input to tensor explicitly to satisfy Keras 3 graph execution
-        if isinstance(input_data, dict):
-            # If it's a dict, we cast the value inside
-            key = list(input_data.keys())[0]
-            input_data[key] = tf.cast(input_data[key], tf.float32)
-            tape.watch(input_data[key])
-        else:
-            input_data = tf.cast(input_data, tf.float32)
-            tape.watch(input_data)
-            
-        last_conv_layer_output, preds = grad_model(input_data)
+        # We explicitly watch the tensor, not the dictionary
+        tape.watch(img_tensor)
         
+        try:
+            # Try passing the dictionary (standard Keras 3 way)
+            last_conv_layer_output, preds = grad_model(input_data)
+        except (KeyError, ValueError):
+            # Fallback: Try passing the tensor directly 
+            # (sometimes works if the dictionary mapping fails)
+            last_conv_layer_output, preds = grad_model(img_tensor)
+
         if pred_index is None:
             pred_index = tf.argmax(preds[0])
         class_channel = preds[:, pred_index]
 
-    # This is the gradient of the output neuron
+    # 5. Process Gradients
     grads = tape.gradient(class_channel, last_conv_layer_output)
-
-    # Vector where each entry is the mean intensity of the gradient
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
-
-    # Multiply each channel in the feature map array
     last_conv_layer_output = last_conv_layer_output[0]
     heatmap = last_conv_layer_output @ pooled_grads[..., tf.newaxis]
     heatmap = tf.squeeze(heatmap)
 
-    # Normalize the heatmap between 0 & 1
     heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
     return heatmap.numpy()
 
