@@ -11,172 +11,168 @@ def get_img_array(img_path, size, preprocess_fn=None):
     arr = keras.utils.img_to_array(img).astype("float32")
     arr = np.expand_dims(arr, axis=0)
     
-    # Preprocess
+    # Normalize to [0, 1]. Models with Rescaling layers will handle [-1, 1] internally.
     if preprocess_fn is not None:
         arr = preprocess_fn(arr)
     else:
-        # Default scaling [0,1]
         arr = arr / 255.0
     return arr
 
-def _get_single_input_size(model, fallback=(224, 224)):
-    try:
-        shape = model.inputs[0].shape
-        h, w = shape[1], shape[2]
-        if h is None or w is None: return fallback
-        return int(h), int(w)
-    except Exception:
-        return fallback
+def find_target_layer(model):
+    """
+    Finds the best layer for GradCAM.
+    Priorities:
+    1. Last Conv2D layer.
+    2. Layers named 'resnet', 'efficientnet' (Nested Backbones).
+    3. Layers named 'swin_reshape' (Custom Swin fix).
+    """
+    # 1. Check for custom Swin reshape layer first
+    for layer in reversed(model.layers):
+        if 'swin_reshape' in layer.name:
+            return layer.name
 
-def find_last_connected_conv2d(model):
-    """
-    Finds the last TOP-LEVEL layer that outputs a 4D feature map (Batch, H, W, C).
-    With the 'nested' model structure, this will find the Backbone layer itself (e.g., 'resnet50v2').
-    """
-    # Iterate backwards through layers
+    # 2. Check for nested backbones (common in Transfer Learning)
+    # We return the backbone layer itself; GradCAM will use its output.
+    for layer in reversed(model.layers):
+        # Identify backbones by typical naming conventions
+        if any(x in layer.name.lower() for x in ['resnet', 'efficientnet', 'convnext', 'densenet', 'vgg']):
+            # Ensure it actually has outputs
+            try:
+                if isinstance(layer.output, list): continue
+                return layer.name
+            except: continue
+
+    # 3. Fallback: Search for the last layer with 4D output (Batch, H, W, C)
     for layer in reversed(model.layers):
         try:
-            # Check output shape
-            output = layer.output
-            if isinstance(output, list): output = output[0]
-            
-            # We need Rank 4 tensor: (Batch, Height, Width, Channels)
-            if len(output.shape) == 4:
+            output_shape = layer.output.shape
+            if len(output_shape) == 4:
                 return layer.name
-        except Exception:
-            # Skip layers that don't have standard outputs (like InputLayer sometimes)
+        except AttributeError:
             continue
-    return None
+            
+    raise ValueError("Could not find a suitable 4D target layer for GradCAM.")
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name=None, pred_index=None):
-    img_tensor = tf.convert_to_tensor(img_array, dtype=tf.float32)
-
     if last_conv_layer_name is None:
-        last_conv_layer_name = find_last_connected_conv2d(model)
-        
-    if last_conv_layer_name is None:
-        raise ValueError("No 4D spatial layer found (Model might be Transformer/Swin).")
+        last_conv_layer_name = find_target_layer(model)
+        print(f"Auto-selected layer for GradCAM: {last_conv_layer_name}")
 
-    target_layer = model.get_layer(last_conv_layer_name)
-
-    # Build the Gradient Model
-    # Since we use top-level layers, this graph construction is safe.
+    # Create a model that maps the input image to the activations
+    # of the last conv layer as well as the output predictions
     grad_model = keras.Model(
         inputs=model.inputs,
-        outputs=[target_layer.output, model.outputs[0]]
+        outputs=[model.get_layer(last_conv_layer_name).output, model.outputs[0]]
     )
 
     with tf.GradientTape() as tape:
-        conv_out, preds = grad_model(img_tensor, training=False)
-        preds = tf.convert_to_tensor(preds)
+        # Cast input to match model expectation (usually float32)
+        inputs = tf.cast(img_array, tf.float32)
         
-        if len(preds.shape) == 1:
-            class_channel = preds
-        elif preds.shape[-1] == 1:
-            class_channel = preds[:, 0]
-        else:
-            if pred_index is None:
-                pred_index = tf.argmax(preds[0])
-            class_channel = preds[:, pred_index]
+        # Watch the input explicitly (sometimes needed for nested models)
+        tape.watch(inputs)
+        
+        # Forward pass
+        # training=False is crucial to disable Dropout/BatchNorm training behavior
+        conv_out, preds = grad_model(inputs, training=False)
+        
+        if pred_index is None:
+            pred_index = tf.argmax(preds[0])
+            
+        class_channel = preds[:, pred_index]
 
-    # Gradient calculation
+    # This is the gradient of the output neuron (top predicted or chosen)
+    # with regard to the output feature map of the last conv layer
     grads = tape.gradient(class_channel, conv_out)
+
+    # Vector of weights: mean intensity of the gradient per feature map channel
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
 
+    # We multiply each channel in the feature map array
+    # by "how important this channel is" with regard to the top predicted class
     conv_out = conv_out[0]
-    heatmap = tf.reduce_sum(conv_out * pooled_grads, axis=-1)
+    
+    # Element-wise multiplication and summation
+    heatmap = tf.matmul(conv_out, pooled_grads[..., tf.newaxis])
+    heatmap = tf.squeeze(heatmap)
 
-    heatmap = tf.maximum(heatmap, 0)
-    denom = tf.reduce_max(heatmap) + 1e-8
-    heatmap = heatmap / denom
-
+    # ReLU
+    heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-10)
+    
     return heatmap.numpy(), last_conv_layer_name
 
-def merge_image_mask(im, mk, alpha=0.35, colormap="jet", mask_thresh=0.25):
-    mk = np.clip(mk, 0.0, 1.0).astype(np.float32)
-    im = np.clip(im, 0.0, 1.0).astype(np.float32)
+def merge_image_mask(im, mk, alpha=0.4, colormap="jet"):
+    # Resizing heat map to match image dimensions
+    mk = cv2.resize(mk, (im.shape[1], im.shape[0]))
+    
+    mk = np.clip(mk, 0.0, 1.0)
+    im = np.clip(im, 0.0, 1.0)
+    
     heat_u8 = np.uint8(255 * mk)
     cmap = mpl.colormaps[colormap]
+    
+    # Get RGB values from colormap
     colors = cmap(np.arange(256))[:, :3]
     jet_heatmap = colors[heat_u8]
+    
     merged = jet_heatmap * alpha + im * (1.0 - alpha)
-    merged[mk < mask_thresh] = im[mk < mask_thresh]
     return np.clip(merged, 0.0, 1.0)
 
-def generate_gradcam_samples(model, generator, N=8, mask_thresh=0.25, layer=None, preprocess_fn=None, seed=None):
-    if seed is not None: np.random.seed(seed)
+def generate_gradcam_samples(model, generator, N=6, layer=None, seed=None):
+    if seed: np.random.seed(seed)
     
-    # 1. Compatibility Check
-    # If Swin/ViT (Rank 3 outputs), this returns None.
-    detected_layer = layer if layer else find_last_connected_conv2d(model)
+    # Detect Input Size from model input or generator
+    try:
+        input_shape = model.inputs[0].shape[1:3] # (H, W)
+        if input_shape[0] is None: raise ValueError
+    except:
+        # Fallback to checking the generator image size
+        img_ex = generator[0][0][0]
+        input_shape = (img_ex.shape[0], img_ex.shape[1])
+
+    target_size = input_shape
+    print(f"GradCAM running with Target Size: {target_size}")
+
+    fig, axs = plt.subplots(2, N, figsize=(3 * N, 6))
     
-    if detected_layer is None:
-        print(f"\n{'='*60}")
-        print(f" SKIPPING GRADCAM: Model does not have a 4D spatial output.")
-        print(f" (This is expected for Swin Transformers or ViT).")
-        print(f"{'='*60}\n")
-        return
+    # Handle single column case
+    if N == 1: axs = axs[:, np.newaxis]
 
-    print(f"Generating GradCAM using layer: {detected_layer}")
+    indices = np.random.choice(len(generator.images), N, replace=False)
 
-    target_h, target_w = _get_single_input_size(model)
-    imsize = (target_h, target_w)
+    for i, idx in enumerate(indices):
+        path = generator.images[idx]
+        
+        # Load and Preprocess
+        img_array = get_img_array(path, target_size)
+        
+        # Original Image for display
+        disp_img = img_array[0].copy()
 
-    fig, axs = plt.subplots(3, N, figsize=(3.2 * N, 9))
-    if N == 1: axs = np.array(axs).reshape(3, 1)
-
-    used = set()
-    max_len = len(generator.images)
-    has_labels = hasattr(generator, "labels")
-
-    for i in range(N):
         try:
-            # Pick random image
-            idx = np.random.randint(0, max_len)
-            while idx in used: idx = np.random.randint(0, max_len)
-            used.add(idx)
-
-            path = generator.images[idx]
-            im = get_img_array(path, imsize, preprocess_fn=preprocess_fn)
-
-            # Prepare Display Image
-            if preprocess_fn is None:
-                disp = im[0].copy()
-            else:
-                d = im[0].astype(np.float32)
-                d = d - d.min()
-                d = d / (d.max() + 1e-8)
-                disp = d
-
-            # 1. Original
-            axs[0, i].imshow(disp)
-            axs[0, i].axis("off")
-            title = "Real"
-            if has_labels: title += f": {np.argmax(generator.labels[idx])}" 
-            axs[0, i].set_title(title, fontsize=11)
-
-            # 2. Heatmap
-            heat, used_layer = make_gradcam_heatmap(im, model, last_conv_layer_name=detected_layer)
-            heat = cv2.resize(heat, (target_w, target_h)).astype(np.float32)
+            # Generate Heatmap
+            heatmap, used_layer = make_gradcam_heatmap(img_array, model, last_conv_layer_name=layer)
             
-            axs[1, i].imshow(heat)
-            axs[1, i].axis("off")
+            # Overlay
+            merged = merge_image_mask(disp_img, heatmap)
             
             # Prediction
-            pred = model.predict(im, verbose=0)
-            pred_idx = np.argmax(pred[0])
-            axs[1, i].set_title(f"Pred: {pred_idx}\n{used_layer}", fontsize=8)
-
-            # 3. Overlay
-            merged = merge_image_mask(disp, heat, mask_thresh=mask_thresh)
-            axs[2, i].imshow(merged)
-            axs[2, i].axis("off")
-
+            preds = model.predict(img_array, verbose=0)
+            pred_lbl = np.argmax(preds[0])
+            real_lbl = np.argmax(generator.labels[idx])
+            
+            axs[0, i].imshow(disp_img)
+            axs[0, i].set_title(f"Real: {real_lbl}\nPred: {pred_lbl}")
+            axs[0, i].axis("off")
+            
+            axs[1, i].imshow(merged)
+            axs[1, i].set_title(f"Layer:\n{used_layer[-15:]}", fontsize=8)
+            axs[1, i].axis("off")
+            
         except Exception as e:
-            # Soft fail for individual images
-            print(f"GradCAM failed for image {i}: {e}")
-            axs[1, i].text(0.5, 0.5, "Error", ha='center')
-            axs[2, i].text(0.5, 0.5, "Error", ha='center')
+            print(f"Error processing image {idx}: {e}")
+            axs[0, i].text(0.5, 0.5, "Error", ha='center')
+            axs[1, i].text(0.5, 0.5, str(e)[:20], ha='center')
 
     plt.tight_layout()
     plt.show()

@@ -8,28 +8,37 @@ from tensorflow.keras.applications import (
     EfficientNetB3,
     ConvNeXtBase
 )
-import keras_cv
+
+def clean_input_shape(input_shape):
+    """
+    Ensures input dimensions are multiples of 32 (required for Swin).
+    """
+    h, w, c = input_shape
+    new_h = (h // 32) * 32
+    new_w = (w // 32) * 32
+    if new_h != h or new_w != w:
+        print(f"Warning: Input shape {input_shape} adjusted to {(new_h, new_w, c)} for Swin compatibility.")
+    return (new_h, new_w, c)
 
 def resnet_model(num_classes, input_shape):
     """
-    Creates a model with a ResNet50V2 backbone.
-    Uses 'nested model' pattern to ensure GradCAM compatibility.
+    ResNet50V2 backbone.
     """
     inputs = layers.Input(input_shape)
-    # ResNetV2 expects inputs in [-1, 1]. Generator provides [0, 1].
-    x = layers.Rescaling(scale=1./0.5, offset=-1)(inputs)
+    # ResNetV2 expects [-1, 1].
+    x = layers.Rescaling(scale=1./127.5, offset=-1)(inputs)
 
-    # Note: input_tensor is NOT used. We call base_model(x) later.
     base_model = ResNet50V2(
         include_top=False, 
         weights='imagenet', 
         pooling=None, 
         input_shape=input_shape
     )
-    # This encapsulates the backbone as a single layer in the graph
+    
+    # We name the backbone layer so GradCAM can find it easily
     x = base_model(x)
     
-    # Manual pooling to ensure feature maps are accessible before this step
+    # x is now (Batch, H, W, 2048). GradCAM attaches here.
     x = layers.GlobalAveragePooling2D(name="global_avg_pool")(x)
     
     x = layers.Dense(256, activation='relu', name='prev_dense')(x)
@@ -39,13 +48,13 @@ def resnet_model(num_classes, input_shape):
     model = Model(inputs=inputs, outputs=outputs)
     return model, 'ResNet50V2'
 
-
 def efficientnet_b3_model(num_classes, input_shape):
     inputs = layers.Input(input_shape)
     
-    # EfficientNet expects [0, 255] usually, but if your generator gives [0,1],
-    # and you trained that way, we keep it as is.
-    # Note: We do NOT pass input_tensor.
+    # EfficientNetB3 in Keras Apps expects [0, 255] for default weights
+    # But if we trained with [0, 1], we should stick to it or rescale if needed.
+    # Assuming the standard Keras App usage which includes preprocessing:
+    
     base_model = EfficientNetB3(
         include_top=False, 
         weights='imagenet', 
@@ -54,6 +63,8 @@ def efficientnet_b3_model(num_classes, input_shape):
     )
     
     x = base_model(inputs)
+    
+    # x is (Batch, H, W, C). GradCAM attaches here.
     x = layers.GlobalAveragePooling2D(name="global_avg_pool")(x)
 
     x = layers.Dense(256, activation='relu', name='prev_dense')(x)
@@ -62,7 +73,6 @@ def efficientnet_b3_model(num_classes, input_shape):
 
     model = Model(inputs=inputs, outputs=outputs)
     return model, 'EfficientNetB3'
-
 
 def convnext_model(num_classes, input_shape):
     inputs = layers.Input(input_shape)
@@ -84,21 +94,31 @@ def convnext_model(num_classes, input_shape):
     model = Model(inputs=inputs, outputs=outputs)
     return model, 'ConvNeXt'
 
-
 def swin_model(num_classes, input_shape):
     """
-    Swin Transformer. 
-    Note: GradCAM will likely skip this model as it produces 3D outputs, not 4D.
+    Swin Transformer with manual reshaping for GradCAM support.
     """
+    # Adjust input shape for Swin (must be divisible by 32)
+    input_shape = clean_input_shape(input_shape)
     inputs = layers.Input(shape=input_shape)
     
-    # Swin implementation often requires pooling inside or specific structure
+    # pooling=None ensures we get the sequence output: (Batch, N, C)
     base_model = SwinTransformerLarge224(
         include_top=False,  
-        pooling='avg'       
+        pooling=None       
     )
     
-    x = base_model(inputs)
+    x = base_model(inputs) 
+    # Output is (Batch, NumPatches, Channels). e.g. (B, 49, 1536)
+    
+    # Reshape back to spatial map (B, H/32, W/32, C)
+    # This allows GradCAM to see "where" the activation is.
+    h_dim = input_shape[0] // 32
+    w_dim = input_shape[1] // 32
+    
+    x = layers.Reshape((h_dim, w_dim, -1), name="swin_reshape")(x)
+    
+    x = layers.GlobalAveragePooling2D(name="global_avg_pool")(x)
     x = layers.Dense(256, activation='relu', name='prev_dense')(x)
     x = layers.Dropout(0.5, name='dropout')(x)
     outputs = layers.Dense(num_classes, activation='softmax', name='last_dense')(x)
@@ -106,20 +126,14 @@ def swin_model(num_classes, input_shape):
     model = Model(inputs=inputs, outputs=outputs)
     return model, 'Swin_KerasCV'
 
-
 def get_model(generator, model_name='ResNet50'):
-    assert model_name in ['ResNet50', 'EfficientNetB3', 'ConvNeXt', 'Swin_KerasCV']
-
-    # Resetting seed for reproducibility
     tf.random.set_seed(42)
     np.random.seed(42)
 
     num_classes = generator.num_classes
-    # Safety check for shape
     try:
         input_shape = generator[0][0][0].shape
     except:
-        # Fallback if generator is empty or complex
         input_shape = (224, 224, 3)
 
     print(f"Building model: {model_name}")
@@ -135,5 +149,4 @@ def get_model(generator, model_name='ResNet50'):
     elif model_name == 'Swin_KerasCV':
         return swin_model(num_classes, input_shape)
     else:
-        # Fallback
         return resnet_model(num_classes, input_shape)
