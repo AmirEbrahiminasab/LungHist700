@@ -6,12 +6,16 @@ import tensorflow as tf
 from tensorflow import keras
 
 def get_img_array(img_path, size, preprocess_fn=None):
+    # Load image
     img = keras.utils.load_img(img_path, target_size=size)
     arr = keras.utils.img_to_array(img).astype("float32")
     arr = np.expand_dims(arr, axis=0)
+    
+    # Preprocess
     if preprocess_fn is not None:
         arr = preprocess_fn(arr)
     else:
+        # Default scaling [0,1]
         arr = arr / 255.0
     return arr
 
@@ -26,18 +30,21 @@ def _get_single_input_size(model, fallback=(224, 224)):
 
 def find_last_connected_conv2d(model):
     """
-    Robustly finds the last layer that outputs a 4D feature map (Batch, H, W, C).
-    Does NOT recurse into nested models to avoid graph disconnection errors.
+    Finds the last TOP-LEVEL layer that outputs a 4D feature map (Batch, H, W, C).
+    With the 'nested' model structure, this will find the Backbone layer itself (e.g., 'resnet50v2').
     """
-    # Iterate backwards through TOP-LEVEL layers only
+    # Iterate backwards through layers
     for layer in reversed(model.layers):
         try:
-            # We look for a 4D tensor output: (Batch, Height, Width, Channels)
-            if isinstance(layer.output, tf.Tensor) or isinstance(layer.output, keras.KerasTensor):
-                shape = layer.output.shape
-                if len(shape) == 4:
-                    return layer.name
+            # Check output shape
+            output = layer.output
+            if isinstance(output, list): output = output[0]
+            
+            # We need Rank 4 tensor: (Batch, Height, Width, Channels)
+            if len(output.shape) == 4:
+                return layer.name
         except Exception:
+            # Skip layers that don't have standard outputs (like InputLayer sometimes)
             continue
     return None
 
@@ -48,14 +55,12 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name=None, pred_index
         last_conv_layer_name = find_last_connected_conv2d(model)
         
     if last_conv_layer_name is None:
-        # Stop silently here; handled in generate loop
-        raise ValueError("No 4D spatial layer found.")
+        raise ValueError("No 4D spatial layer found (Model might be Transformer/Swin).")
 
     target_layer = model.get_layer(last_conv_layer_name)
 
-    # Build gradient model
-    # Note: We use model.inputs and target_layer.output. 
-    # Because we only search top-level layers, this graph is always valid.
+    # Build the Gradient Model
+    # Since we use top-level layers, this graph construction is safe.
     grad_model = keras.Model(
         inputs=model.inputs,
         outputs=[target_layer.output, model.outputs[0]]
@@ -74,6 +79,7 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name=None, pred_index
                 pred_index = tf.argmax(preds[0])
             class_channel = preds[:, pred_index]
 
+    # Gradient calculation
     grads = tape.gradient(class_channel, conv_out)
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
 
@@ -100,15 +106,18 @@ def merge_image_mask(im, mk, alpha=0.35, colormap="jet", mask_thresh=0.25):
 def generate_gradcam_samples(model, generator, N=8, mask_thresh=0.25, layer=None, preprocess_fn=None, seed=None):
     if seed is not None: np.random.seed(seed)
     
-    # 1. Check if model is supported (Swin/ViT often fail here)
-    if layer is None:
-        layer = find_last_connected_conv2d(model)
-        
-    if layer is None:
-        print(f"\n[{'!'*20}]\nSKIPPING GradCAM: No 4D feature map found.\n(This is expected for Swin/ViT or if 'pooling' was not None).\n[{'!'*20}]\n")
+    # 1. Compatibility Check
+    # If Swin/ViT (Rank 3 outputs), this returns None.
+    detected_layer = layer if layer else find_last_connected_conv2d(model)
+    
+    if detected_layer is None:
+        print(f"\n{'='*60}")
+        print(f" SKIPPING GRADCAM: Model does not have a 4D spatial output.")
+        print(f" (This is expected for Swin Transformers or ViT).")
+        print(f"{'='*60}\n")
         return
 
-    print(f"Generating GradCAM using layer: {layer}")
+    print(f"Generating GradCAM using layer: {detected_layer}")
 
     target_h, target_w = _get_single_input_size(model)
     imsize = (target_h, target_w)
@@ -121,31 +130,33 @@ def generate_gradcam_samples(model, generator, N=8, mask_thresh=0.25, layer=None
     has_labels = hasattr(generator, "labels")
 
     for i in range(N):
-        idx = np.random.randint(0, max_len)
-        while idx in used: idx = np.random.randint(0, max_len)
-        used.add(idx)
-
-        path = generator.images[idx]
-        im = get_img_array(path, imsize, preprocess_fn=preprocess_fn)
-
-        if preprocess_fn is None:
-            disp = im[0].copy()
-        else:
-            d = im[0].astype(np.float32)
-            d = d - d.min()
-            d = d / (d.max() + 1e-8)
-            disp = d
-
-        # Plot Original
-        axs[0, i].imshow(disp)
-        axs[0, i].axis("off")
-        title = "Real"
-        if has_labels: title += f": {np.argmax(generator.labels[idx])}" # simplified label
-        axs[0, i].set_title(title, fontsize=11)
-
-        # Plot Heatmap
         try:
-            heat, used_layer = make_gradcam_heatmap(im, model, last_conv_layer_name=layer)
+            # Pick random image
+            idx = np.random.randint(0, max_len)
+            while idx in used: idx = np.random.randint(0, max_len)
+            used.add(idx)
+
+            path = generator.images[idx]
+            im = get_img_array(path, imsize, preprocess_fn=preprocess_fn)
+
+            # Prepare Display Image
+            if preprocess_fn is None:
+                disp = im[0].copy()
+            else:
+                d = im[0].astype(np.float32)
+                d = d - d.min()
+                d = d / (d.max() + 1e-8)
+                disp = d
+
+            # 1. Original
+            axs[0, i].imshow(disp)
+            axs[0, i].axis("off")
+            title = "Real"
+            if has_labels: title += f": {np.argmax(generator.labels[idx])}" 
+            axs[0, i].set_title(title, fontsize=11)
+
+            # 2. Heatmap
+            heat, used_layer = make_gradcam_heatmap(im, model, last_conv_layer_name=detected_layer)
             heat = cv2.resize(heat, (target_w, target_h)).astype(np.float32)
             
             axs[1, i].imshow(heat)
@@ -156,14 +167,16 @@ def generate_gradcam_samples(model, generator, N=8, mask_thresh=0.25, layer=None
             pred_idx = np.argmax(pred[0])
             axs[1, i].set_title(f"Pred: {pred_idx}\n{used_layer}", fontsize=8)
 
-            # Plot Overlay
+            # 3. Overlay
             merged = merge_image_mask(disp, heat, mask_thresh=mask_thresh)
             axs[2, i].imshow(merged)
             axs[2, i].axis("off")
-            
+
         except Exception as e:
-            print(f"GradCAM error on img {i}: {e}")
+            # Soft fail for individual images
+            print(f"GradCAM failed for image {i}: {e}")
             axs[1, i].text(0.5, 0.5, "Error", ha='center')
+            axs[2, i].text(0.5, 0.5, "Error", ha='center')
 
     plt.tight_layout()
     plt.show()
