@@ -30,6 +30,9 @@ def make_backbone_trainable(model, trainable=True):
 
 
 def compile_model(model, num_classes, init_lr=1e-4):
+    tf.random.set_seed(42)
+    np.random.seed(42)
+    
     model.compile(optimizer=tf.keras.optimizers.Adam(init_lr), 
                   loss='categorical_crossentropy', 
                   metrics=[

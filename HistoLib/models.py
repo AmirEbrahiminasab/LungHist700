@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 from tfswin import SwinTransformerLarge224
 from tensorflow.keras import layers
 from tensorflow.keras.models import Model
@@ -116,6 +117,9 @@ def get_model(generator, model_name='ResNet50'):
     Retrieves a specified model by name, configured for the given data generator.
     """
     assert model_name in ['ResNet50', 'EfficientNetB3', 'ConvNeXt', 'ViT_KerasCV', 'Swin_KerasCV']
+
+    tf.random.set_seed(42)
+    np.random.seed(42)
 
     num_classes = generator.num_classes
     input_shape = generator[0][0][0].shape
