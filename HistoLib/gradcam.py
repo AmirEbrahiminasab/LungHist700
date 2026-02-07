@@ -181,7 +181,7 @@ def generate_gradcam_samples(
 
         # If layer not provided, auto-detect once using model + dummy input
         if layer is None:
-            layer = find_last_connected_conv2d(model, input_size=imsize)
+            layer = find_last_connected_conv2d(model)
 
         for i in range(N):
             idx = np.random.randint(0, max_len)
