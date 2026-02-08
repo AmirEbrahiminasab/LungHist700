@@ -6,7 +6,7 @@ import numpy as np
 import albumentations as A
 import matplotlib.pyplot as plt
 from tensorflow.keras.utils import Sequence, to_categorical
-import random
+
 
 def train_augmentations(percent_resize=0.25):
     """
@@ -39,7 +39,7 @@ def test_augmentations(percent_resize=0.25):
 class CustomDataGenerator(Sequence):
     def __init__(self, images, labels, num_classes, augmentations,
                  batch_size=8, 
-                 shuffle_epoch=True, seed=42):
+                 shuffle_epoch=True):
         """
         Custom Generator. It loads the images from file and performs data augmentation.
         """
@@ -51,7 +51,7 @@ class CustomDataGenerator(Sequence):
         self.shuffle_epoch = shuffle_epoch
         self.augment = augmentations
         
-        self.rng = random.Random(seed)
+        random.seed(17)
         
     def __len__(self):
         # Number of batches in the generator
@@ -63,7 +63,7 @@ class CustomDataGenerator(Sequence):
 
         if (idx == 0) and (self.shuffle_epoch):
             c = list(zip(self.images, self.labels))
-            self.rng.shuffle(c)
+            random.shuffle(c)
             self.images, self.labels = zip(*c)
             self.images, self.labels = np.array(self.images), np.array(self.labels)
 
@@ -133,7 +133,7 @@ def get_patient_generators(resolution,
                            dataset_csv = 'data/data.csv',
                            train_split = 0.8,
                            val_split = 0.1,
-                           random_state = 42,
+                           random_state = 17,
                            image_scale = 0.25,
                            reproducible = False,
                            debug = False
