@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tfswin import SwinTransformerLarge224, preprocess_input
+from tfswin import SwinTransformerLarge224
 from tensorflow.keras import layers
 from tensorflow.keras.models import Model
 from tensorflow.keras.applications import (
@@ -93,7 +93,9 @@ def swin_model(num_classes, input_shape):
     """
     inputs = layers.Input(shape=input_shape)
     x = layers.Resizing(224, 224, interpolation='bicubic')(inputs)
-    x = layers.Lambda(preprocess_input, name='swin_preprocessing')(x)
+    x = layers.Rescaling(scale=255.0)(x)
+
+    x = layers.Lambda(lambda x: tf.cast(x, tf.uint8), name='to_uint8')(x)
     
     base_model = SwinTransformerLarge224(
         include_top=False,  
@@ -101,7 +103,7 @@ def swin_model(num_classes, input_shape):
     )
     
     x = base_model(x)
-    x = layers.Dense(256, activation='relu', name='prev_dense')(x)
+    x = layers.Dense(128, activation='relu', name='prev_dense')(x)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.7, name='dropout')(x)
     outputs = layers.Dense(num_classes, activation='softmax', name='last_dense')(x)
