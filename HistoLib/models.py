@@ -92,7 +92,7 @@ def swin_model(num_classes, input_shape):
     Fits on T4/P100 (16GB VRAM).
     """
     inputs = layers.Input(shape=input_shape)
-    x = layers.Resizing(224, 224, interpolation='bicubic')(inputs)
+    x = layers.Resizing(224, 224, interpolation='bilinear')(inputs)
     x = layers.Rescaling(scale=255.0)(x)
 
     x = layers.Lambda(lambda x: tf.cast(x, tf.uint8), name='to_uint8')(x)
