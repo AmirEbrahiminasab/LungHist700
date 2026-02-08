@@ -25,8 +25,7 @@ def resnet_model(num_classes, input_shape):
     ResNet50V2 backbone.
     """
     inputs = layers.Input(input_shape)
-    # ResNetV2 expects [-1, 1].
-    x = layers.Rescaling(scale=1./127.5, offset=-1)(inputs)
+    x = layers.Rescaling(scale=2.0, offset=-1)(inputs)
 
     base_model = ResNet50V2(
         include_top=False, 
@@ -51,9 +50,7 @@ def resnet_model(num_classes, input_shape):
 def efficientnet_b3_model(num_classes, input_shape):
     inputs = layers.Input(input_shape)
     
-    # EfficientNetB3 in Keras Apps expects [0, 255] for default weights
-    # But if we trained with [0, 1], we should stick to it or rescale if needed.
-    # Assuming the standard Keras App usage which includes preprocessing:
+    x = layers.Rescaling(scale=255.0)(inputs)
     
     base_model = EfficientNetB3(
         include_top=False, 

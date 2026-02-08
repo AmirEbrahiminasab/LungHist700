@@ -1,6 +1,7 @@
 logs/
 .idea/
 HistoLib/__pycache__/
+Untitled-1.py
 
 *checkpoints*
 *.pyc

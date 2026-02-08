@@ -60,10 +60,14 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name=None, pred_index
 
     # Create a model that maps the input image to the activations
     # of the last conv layer as well as the output predictions
-    grad_model = keras.Model(
-        inputs=model.inputs,
-        outputs=[model.get_layer(last_conv_layer_name).output, model.outputs[0]]
-    )
+    try:
+        grad_model = keras.Model(
+            inputs=model.inputs,
+            outputs=[model.get_layer(last_conv_layer_name).output, model.outputs[0]]
+        )
+    except ValueError as e:
+        print(f"Error building GradCAM model: {e}")
+        return np.zeros(img_array.shape[1:3]), last_conv_layer_name
 
     with tf.GradientTape() as tape:
         # Cast input to match model expectation (usually float32)
