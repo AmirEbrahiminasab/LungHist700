@@ -104,13 +104,26 @@ def test_model(model, test_generator, class_names, ax, conf_normalize=True):
 
     test_predictions = model.predict(test_generator)
     ys = [t[1] for t in test_generator]
-    test_labels = np.concatenate([np.argmax(t, 1) for t in ys])
+    test_labels = test_generator.labels 
 
     # Convert predictions to class labels
     predicted_labels = np.argmax(test_predictions, axis=1)
+
+    if len(predicted_labels) != len(test_labels):
+        print(f"Warning: Length mismatch! Preds: {len(predicted_labels)}, Labels: {len(test_labels)}")
+        min_len = min(len(predicted_labels), len(test_labels))
+        predicted_labels = predicted_labels[:min_len]
+        test_labels = test_labels[:min_len]
     
     # Calculate metrics
-    auc = roc_auc_score(np.concatenate(ys), test_predictions, average='macro', multi_class='ovo')
+    try:
+        from tensorflow.keras.utils import to_categorical
+        y_true_onehot = to_categorical(test_labels, num_classes=len(class_names))
+        auc = roc_auc_score(y_true_onehot, test_predictions, average='macro', multi_class='ovo')
+    except Exception as e:
+        print(f"Could not calculate AUC: {e}")
+        auc = 0.0
+
     accuracy = accuracy_score(test_labels, predicted_labels)
     precision = precision_score(test_labels, predicted_labels, average='macro')
     recall = recall_score(test_labels, predicted_labels, average='macro')
