@@ -3,10 +3,10 @@ from .utils import get_dataframe, get_classes_labels, train_test_split
 import random
 import imageio
 import numpy as np
-import random
 import albumentations as A
 import matplotlib.pyplot as plt
 from tensorflow.keras.utils import Sequence, to_categorical
+import random
 
 def train_augmentations(percent_resize=0.25):
     """
