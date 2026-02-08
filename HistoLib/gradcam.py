@@ -69,7 +69,7 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name=None, pred_index
         
         # Forward pass
         # training=False is crucial to disable Dropout/BatchNorm training behavior
-        conv_out, preds = grad_model(inputs, training=False)
+        conv_out, preds = grad_model(inputs)
         
         if pred_index is None:
             pred_index = tf.argmax(preds[0])
@@ -79,6 +79,10 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name=None, pred_index
     # This is the gradient of the output neuron (top predicted or chosen)
     # with regard to the output feature map of the last conv layer
     grads = tape.gradient(class_channel, conv_out)
+
+    if grads is None:
+        print("Warning: Gradients are None. Heatmap will be blank.")
+        return np.zeros(conv_out.shape[1:3]), last_conv_layer_name
 
     # Vector of weights: mean intensity of the gradient per feature map channel
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))

@@ -30,13 +30,12 @@ def resnet_model(num_classes, input_shape):
     base_model = ResNet50V2(
         include_top=False, 
         weights='imagenet', 
-        input_tensor=x,
         pooling=None, 
-        input_shape=None
+        input_shape=input_shape
     )
     
     # We name the backbone layer so GradCAM can find it easily
-    x = base_model.output
+    x = base_model(x)
     
     # x is now (Batch, H, W, 2048). GradCAM attaches here.
     x = layers.GlobalAveragePooling2D(name="global_avg_pool")(x)
@@ -55,13 +54,12 @@ def efficientnet_b3_model(num_classes, input_shape):
     
     base_model = EfficientNetB3(
         include_top=False, 
-        weights='imagenet',
-        input_tensor=x,
+        weights='imagenet', 
         pooling=None, 
-        input_shape=None
+        input_shape=input_shape
     )
     
-    x = base_model.output
+    x = base_model(x)
     
     # x is (Batch, H, W, C). GradCAM attaches here.
     x = layers.GlobalAveragePooling2D(name="global_avg_pool")(x)

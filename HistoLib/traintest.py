@@ -20,7 +20,7 @@ def make_backbone_trainable(model, trainable=True):
         # We want to keep the BatchNormalization layers trainable for statistics, 
         # but freeze the weights of Convolutions during warm-up.
         if isinstance(layer, tf.keras.layers.BatchNormalization):
-            layer.trainable = False
+            layer.trainable = True
         elif 'dense' in layer.name or 'dropout' in layer.name:
             layer.trainable = True
         else:
