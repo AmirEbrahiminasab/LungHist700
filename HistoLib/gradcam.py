@@ -21,32 +21,23 @@ def get_img_array(img_path, size, preprocess_fn=None):
 def find_target_layer(model):
     """
     Finds the best layer for GradCAM.
-    Priorities:
-    1. Last Conv2D layer.
-    2. Layers named 'resnet', 'efficientnet' (Nested Backbones).
-    3. Layers named 'swin_reshape' (Custom Swin fix).
     """
-    # 1. Check for custom Swin reshape layer first
+    # 1. Check for custom Swin reshape layer first (Keep this for Swin)
     for layer in reversed(model.layers):
         if 'swin_reshape' in layer.name:
             return layer.name
 
-    # 2. Check for nested backbones (common in Transfer Learning)
-    # We return the backbone layer itself; GradCAM will use its output.
-    for layer in reversed(model.layers):
-        # Identify backbones by typical naming conventions
-        if any(x in layer.name.lower() for x in ['resnet', 'efficientnet', 'convnext', 'densenet', 'vgg']):
-            # Ensure it actually has outputs
-            try:
-                if isinstance(layer.output, list): continue
-                return layer.name
-            except: continue
-
-    # 3. Fallback: Search for the last layer with 4D output (Batch, H, W, C)
+    # 2. Main Strategy: Search for the last layer with 4D output (Batch, H, W, C)
+    # Since we unnested the models, this will correctly find 'post_relu' or similar.
     for layer in reversed(model.layers):
         try:
+            # Skip list outputs or non-tensor outputs
+            if isinstance(layer.output, list): continue
+            
             output_shape = layer.output.shape
             if len(output_shape) == 4:
+                # Exclude input layers just in case
+                if isinstance(layer, keras.layers.InputLayer): continue
                 return layer.name
         except AttributeError:
             continue
