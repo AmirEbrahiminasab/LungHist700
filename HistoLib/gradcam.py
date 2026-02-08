@@ -21,23 +21,32 @@ def get_img_array(img_path, size, preprocess_fn=None):
 def find_target_layer(model):
     """
     Finds the best layer for GradCAM.
+    Priorities:
+    1. Last Conv2D layer.
+    2. Layers named 'resnet', 'efficientnet' (Nested Backbones).
+    3. Layers named 'swin_reshape' (Custom Swin fix).
     """
-    # 1. Check for custom Swin reshape layer first (Keep this for Swin)
+    # 1. Check for custom Swin reshape layer first
     for layer in reversed(model.layers):
         if 'swin_reshape' in layer.name:
             return layer.name
 
-    # 2. Main Strategy: Search for the last layer with 4D output (Batch, H, W, C)
-    # Since we unnested the models, this will correctly find 'post_relu' or similar.
+    # 2. Check for nested backbones (common in Transfer Learning)
+    # We return the backbone layer itself; GradCAM will use its output.
+    for layer in reversed(model.layers):
+        # Identify backbones by typical naming conventions
+        if any(x in layer.name.lower() for x in ['resnet', 'efficientnet', 'convnext', 'densenet', 'vgg']):
+            # Ensure it actually has outputs
+            try:
+                if isinstance(layer.output, list): continue
+                return layer.name
+            except: continue
+
+    # 3. Fallback: Search for the last layer with 4D output (Batch, H, W, C)
     for layer in reversed(model.layers):
         try:
-            # Skip list outputs or non-tensor outputs
-            if isinstance(layer.output, list): continue
-            
             output_shape = layer.output.shape
             if len(output_shape) == 4:
-                # Exclude input layers just in case
-                if isinstance(layer, keras.layers.InputLayer): continue
                 return layer.name
         except AttributeError:
             continue
@@ -69,7 +78,7 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name=None, pred_index
         
         # Forward pass
         # training=False is crucial to disable Dropout/BatchNorm training behavior
-        conv_out, preds = grad_model(inputs)
+        conv_out, preds = grad_model(inputs, training=False)
         
         if pred_index is None:
             pred_index = tf.argmax(preds[0])
@@ -79,10 +88,6 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name=None, pred_index
     # This is the gradient of the output neuron (top predicted or chosen)
     # with regard to the output feature map of the last conv layer
     grads = tape.gradient(class_channel, conv_out)
-
-    if grads is None:
-        print("Warning: Gradients are None. Heatmap will be blank.")
-        return np.zeros(conv_out.shape[1:3]), last_conv_layer_name
 
     # Vector of weights: mean intensity of the gradient per feature map channel
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
