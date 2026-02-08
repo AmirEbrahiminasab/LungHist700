@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tfswin import SwinTransformerLarge224
+from tfswin import SwinTransformerLarge224, preprocess_input
 from tensorflow.keras import layers
 from tensorflow.keras.models import Model
 from tensorflow.keras.applications import (
@@ -92,15 +92,18 @@ def swin_model(num_classes, input_shape):
     Fits on T4/P100 (16GB VRAM).
     """
     inputs = layers.Input(shape=input_shape)
+    x = layers.Resizing(224, 224, interpolation='bicubic')(inputs)
+    x = layers.Lambda(preprocess_input, name='swin_preprocessing')(x)
     
     base_model = SwinTransformerLarge224(
         include_top=False,  
         pooling='avg'       
     )
     
-    x = base_model(inputs)
+    x = base_model(x)
     x = layers.Dense(256, activation='relu', name='prev_dense')(x)
-    x = layers.Dropout(0.5, name='dropout')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(0.7, name='dropout')(x)
     outputs = layers.Dense(num_classes, activation='softmax', name='last_dense')(x)
 
     model = Model(inputs=inputs, outputs=outputs)
