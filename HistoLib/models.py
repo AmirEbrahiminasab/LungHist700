@@ -59,7 +59,7 @@ def efficientnet_b3_model(num_classes, input_shape):
         input_shape=input_shape
     )
     
-    x = base_model(inputs)
+    x = base_model(x)
     
     # x is (Batch, H, W, C). GradCAM attaches here.
     x = layers.GlobalAveragePooling2D(name="global_avg_pool")(x)
