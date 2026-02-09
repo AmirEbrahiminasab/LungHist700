@@ -41,7 +41,7 @@ def efficientnet_b3_model(num_classes, input_shape):
 
     x = layers.Dense(128, activation='relu', name='prev_dense')(base_model.output)
     x = layers.BatchNormalization()(x)
-    x = layers.Dropout(0.6, name='dropout')(x)
+    x = layers.Dropout(0.7, name='dropout')(x)
     outputs = layers.Dense(num_classes, activation='softmax', name='last_dense')(x)
 
     model = Model(inputs=inputs, outputs=outputs)
