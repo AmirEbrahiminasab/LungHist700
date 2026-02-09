@@ -35,13 +35,12 @@ def efficientnet_b3_model(num_classes, input_shape):
     Creates a model with an EfficientNet-B3 backbone.
     """
     inputs = layers.Input(input_shape)
-    inputs = layers.Rescaling(scale=255.0)(inputs)
 
     base_model = EfficientNetB3(include_top=False, weights='imagenet', pooling='avg', input_tensor=inputs)
 
-    x = layers.Dense(128, activation='relu', name='prev_dense')(base_model.output)
+    x = layers.Dense(256, activation='relu', name='prev_dense')(base_model.output)
     x = layers.BatchNormalization()(x)
-    x = layers.Dropout(0.7, name='dropout')(x)
+    x = layers.Dropout(0.5, name='dropout')(x)
     outputs = layers.Dense(num_classes, activation='softmax', name='last_dense')(x)
 
     model = Model(inputs=inputs, outputs=outputs)
