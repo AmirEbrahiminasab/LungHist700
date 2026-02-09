@@ -35,13 +35,13 @@ def efficientnet_b3_model(num_classes, input_shape):
     Creates a model with an EfficientNet-B3 backbone.
     """
     inputs = layers.Input(input_shape)
-    x = layers.Rescaling(scale=255.0)(inputs)
+    inputs = layers.Rescaling(scale=255.0)(inputs)
 
     base_model = EfficientNetB3(include_top=False, weights='imagenet', pooling='avg', input_tensor=inputs)
 
-    x = layers.Dense(128, activation='relu', name='prev_dense')(base_model(x))
+    x = layers.Dense(256, activation='relu', name='prev_dense')(base_model.output)
     x = layers.BatchNormalization()(x)
-    x = layers.Dropout(0.7, name='dropout')(x)
+    x = layers.Dropout(0.5, name='dropout')(x)
     outputs = layers.Dense(num_classes, activation='softmax', name='last_dense')(x)
 
     model = Model(inputs=inputs, outputs=outputs)
@@ -93,17 +93,17 @@ def swin_model(num_classes, input_shape):
     Fits on T4/P100 (16GB VRAM).
     """
     inputs = layers.Input(shape=input_shape)
-    x = layers.Resizing(224, 224, interpolation='bilinear')(inputs)
-    x = layers.Rescaling(scale=255.0)(x)
+    inputs = layers.Resizing(224, 224, interpolation='bilinear')(inputs)
+    inputs = layers.Rescaling(scale=255.0)(inputs)
 
-    x = layers.Lambda(lambda x: tf.cast(x, tf.uint8), name='to_uint8')(x)
+    inputs = layers.Lambda(lambda x: tf.cast(x, tf.uint8), name='to_uint8')(inputs)
     
     base_model = SwinTransformerLarge224(
         include_top=False,  
         pooling='avg'       
     )
     
-    x = base_model(x)
+    x = base_model(inputs)
     x = layers.Dense(128, activation='relu', name='prev_dense')(x)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.7, name='dropout')(x)
